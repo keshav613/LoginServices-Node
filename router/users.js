@@ -4,8 +4,18 @@ const User = require("../models/User");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const passport = require("passport");
+const jwtAuthenticate = require("../auths/jwtStategy");
 
 router.use(express.urlencoded({ extended: false }));
+
+router.get(
+  "/home",
+  (req, res, next) => jwtAuthenticate(req, res, next),
+  (req, res) => {
+    console.log("inside home page");
+    res.status("200").send("inside home page");
+  }
+);
 
 router.post("/register", (req, res) => {
   User.findOne({ email: req.body.email }, (err, user) => {
@@ -27,6 +37,8 @@ router.post("/register", (req, res) => {
         res.json(user.name);
       });
     });
+    res.status(200).send("new user added");
+    //res.redirect("/login");
   });
 });
 
@@ -37,63 +49,62 @@ router.post("/login", (req, res) => {
     else if (!user)
       return res.status(400).send("User does not exist, pls register");
 
-    bcrypt.compare(req.body.password, user.password, (err, result) => {
+    bcrypt.compare(req.body.password, user.password, async (err, result) => {
       if (err) throw err;
       if (result) {
-        const payload = {
-          name: user.name,
-          email: user.email,
-        };
-        jwt.sign(
-          payload,
-          process.env.JWT_SECRET_KEY,
-          { expiresIn: 3600 },
-          (err, token) => {
-            if (err) throw err;
-            res.json({
-              success: true,
-              toekn: "Bearer " + token,
-            });
-          }
-        );
+        req.user = user;
+        await jwtSignAndSet(req, res);
+        res.redirect("/home");
       } else res.status(201).send("Incorrect password");
     });
   });
 });
 
 router.get(
-  "/auth/google",
-  passport.authenticate("google", { scope: ["email", "profile"] })
+  "/api/auth/google",
+  passport.authenticate("google", { scope: ["email", "profile", "openid"] })
 );
 
 router.get(
-  "/auth/google/callback",
-  passport.authenticate("google", {
-    successRedirect: "/protected",
-    failureRedirect: "/failed",
-  })
+  "/api/auth/google/callback",
+  passport.authenticate("google", { failureRedirect: "/api/auth/google" }),
+  async (req, res, next) => {
+    await jwtSignAndSet(req, res);
+    console.log("redirected to hom page");
+  }
 );
-const isLoggeddIn = (req, res, next) => {
-  req.user ? next() : res.redirect("/login");
-};
-router.get("/protected", isLoggeddIn, (req, res) => {
-  res.send("google logged in");
-});
 
-router.get("/failed", (req, res) => {
-  res.send("google logged in failed");
-});
+async function jwtSignAndSet(req, res) {
+  jwt.sign(
+    { name: req.user.name },
+    process.env.JWT_SECRET_KEY,
+    { expiresIn: 3600 },
+    (err, token) => {
+      if (err) throw err;
+      res.cookie("jwt", token, { maxAge: 900000, httpOnly: true });
+    }
+  );
+}
+
 router.get(
-  "/current",
-  passport.authenticate("jwt", { session: false }),
+  "/protected",
+  (req, res, next) => jwtAuthenticate(req, res, next),
   (req, res) => {
-    res.json(req.user);
+    console.log(req.payload);
+    res.status(200).send("success, JWT verified");
   }
 );
 
 router.get("/logout", function (req, res) {
-  console.log("logout called");
-  res.statusCode(200).send("logged out");
+  req.logOut();
+  req.clearCookie("jwt");
+  res.status(200).send("logged out");
 });
 
 module.exports = router;
+
+/*
+take req.cookie and doo in jwt stratagey.
+
+and after login using google create a jwt and set as cookie.
+*/

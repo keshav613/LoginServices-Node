@@ -1,19 +1,21 @@
-const express = require('express');
+require("dotenv").config();
+
+const express = require("express");
 const app = express();
 const port = process.env.port || 3000;
-const loginRouter = require('./router/users')
-const passport = require('passport');
+const loginRouter = require("./router/users");
+const passport = require("passport");
 const mongoose = require("mongoose");
-const dbstring = 'mongodb://localhost:27017/';
-var session = require('express-session');
-
-app.use(session({secret: 'cats'}));
-app.use(express.urlencoded({extended: false}));
+const dbstring = `mongodb+srv://${process.env.dbUsername}:${process.env.dbPassword}@cluster0.0gcba.mongodb.net/${process.env.dbName}?retryWrites=true&w=majority`;
+var session = require("express-session");
+var cookieParser = require("cookie-parser");
+app.use(session({ secret: "cats" }));
+app.use(express.urlencoded({ extended: false }));
 app.use(express.json());
-require('dotenv').config()
-//app.use(passport);
+app.use(cookieParser());
 
-mongoose.connect(dbstring, {
+mongoose
+  .connect(dbstring, {
     useNewUrlParser: true,
     useUnifiedTopology: true,
   })
@@ -26,9 +28,8 @@ mongoose.connect(dbstring, {
 
 app.use(passport.initialize());
 app.use(passport.session());
-require('./auths/jwtStategy')(passport);
-require('./auths/googleAuth')(passport);
+require("./auths/googleAuth")(passport);
 
-app.use("/", loginRouter)
+app.use("/", loginRouter);
 
 app.listen(port);
